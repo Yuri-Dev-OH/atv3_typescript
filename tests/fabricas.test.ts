@@ -12,11 +12,12 @@ import { criarApp } from '../src/http/app.js';
 import { RepositorioMemoria } from '../src/infrastructure/memory-repository.js';
 import { OrquestradorPadrao } from '../src/recommendation/orchestrator.js';
 import { estrategias, RecomendadorPriorizado } from '../src/recommendation/strategies.js';
-import { profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
+import { servicosDePapeis } from '../src/domain/servicos.js';
+import { comServicos, profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
 
 const TIPOS: TipoProjeto[] = ['ficcao', 'documentario', 'animacao', 'publicitario'];
 const fabrica = (tipo: TipoProjeto) => RegistroPrototipos.padrao().obter(tipo).criarFabrica();
-const projeto = (ajustes: Partial<ProjetoDados> = {}): ProjetoDados => ({ ...projetoExemplo(), id: id(), ...ajustes });
+const projeto = (ajustes: Partial<ProjetoDados> = {}): ProjetoDados => comServicos({ ...projetoExemplo(), id: id(), ...ajustes });
 const profissionais = (): ProfissionalDados[] => profissionaisExemplo().map(p => ({ ...p, id: id() }));
 // Especialista em efeitos visuais com domínio de modelagem 3D, mas menor aderência à competência pedida no papel.
 const modelador = (base: ProfissionalDados): ProfissionalDados => ({ ...base, id: 'modelador-3d', nome: 'Modelador 3D',
@@ -91,7 +92,8 @@ describe('OrquestradorEquipe com fábricas diferentes', () => {
       tipo: 'realidade-virtual' as TipoProjeto,
       criarProjeto: (dados: AjustesProjeto) => RegistroPrototipos.padrao().criar('ficcao', dados),
       criarValidador: () => validador,
-      criarRecomendador: e => new RecomendadorPriorizado(estrategias[e], [{ nome: 'unity', nivel: 1 }], 0.9),
+      criarRecomendador: e => new RecomendadorPriorizado(typeof e === 'string' ? estrategias[e] : e, [{ nome: 'unity', nivel: 1 }], 0.9),
+      criarServicoPrincipal: p => servicosDePapeis(p),
       criarNotificador: () => ({ compor: (tipo, p) => ({ assunto: 'RV', mensagem: `${tipo}: experiência imersiva ${p.titulo}` }) }),
       criarRelatorio: () => new GeradorRelatorio(),
     };
@@ -114,7 +116,8 @@ describe('OrquestradorEquipe com fábricas diferentes', () => {
 describe('SistemaRecomendacao seleciona a fábrica pelo tipo', () => {
   it('cria o orquestrador com a fábrica do tipo de cada solicitação', async () => {
     const usadas: TipoProjeto[] = [];
-    const sistema = new SistemaRecomendacao(new RepositorioMemoria(), { async processar() {} }, f => { usadas.push(f.tipo); return new OrquestradorPadrao(f); });
+    const sistema = new SistemaRecomendacao(new RepositorioMemoria(), { async processar() {} },
+      { criarOrquestrador: (f, configuracao) => { usadas.push(f.tipo); return new OrquestradorPadrao(f, configuracao); } });
     for (const p of profissionaisExemplo()) await sistema.cadastrarProfissional(p);
     for (const tipo of TIPOS) await sistema.criar({ ...projetoExemplo(), duracao: 1, tipoCaptacao: tipo });
     expect(usadas).toEqual(TIPOS);

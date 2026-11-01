@@ -5,7 +5,7 @@ import { RegistroPrototipos, estadoInicial } from '../src/domain/prototipos.js';
 import { CalculadorCompatibilidade, GeradorRelatorio } from '../src/domain/visitors.js';
 import { criarApp } from '../src/http/app.js';
 import { RepositorioMemoria } from '../src/infrastructure/memory-repository.js';
-import { profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
+import { comServicos, profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
 
 const classes: Record<TipoProjeto, new (estado: EstadoProjeto) => Projeto> = {
   ficcao: ProjetoFiccao, documentario: ProjetoDocumentario, animacao: ProjetoAnimacao, publicitario: ProjetoPublicitario,
@@ -41,14 +41,14 @@ describe('Prototype: clonar() em cada subclasse de Projeto', () => {
     expect(original.profissionais[0]!.dados.preco).not.toBe(1);
   });
   it('clona restrições específicas de cada tipo', () => {
-    const animacao = new ProjetoAnimacao(estadoInicial({ ...projetoExemplo(), id: 'a', tipoCaptacao: 'animacao' }));
+    const animacao = new ProjetoAnimacao(estadoInicial(comServicos({ ...projetoExemplo(), id: 'a', tipoCaptacao: 'animacao' })));
     const clone = animacao.clonar();
     clone.restricoes.softwares3D.push('Houdini');
     expect(animacao.restricoes.softwares3D).toEqual(['Blender', 'Maya']);
     expect(clone.restricoes.minutosRenderPorMinuto).toBe(120);
-    const publicitario = new ProjetoPublicitario(estadoInicial({ ...projetoExemplo(), id: 'p', tipoCaptacao: 'publicitario' })).clonar();
+    const publicitario = new ProjetoPublicitario(estadoInicial(comServicos({ ...projetoExemplo(), id: 'p', tipoCaptacao: 'publicitario' }))).clonar();
     expect(publicitario.restricoes).toMatchObject({ prazoMaximoDias: 30, duracaoMaxima: 3, aprovacaoCliente: true });
-    expect(new ProjetoDocumentario(estadoInicial({ ...projetoExemplo(), id: 'd' })).clonar().restricoes.exigeDireitoImagem).toBe(true);
+    expect(new ProjetoDocumentario(estadoInicial(comServicos({ ...projetoExemplo(), id: 'd' }))).clonar().restricoes.exigeDireitoImagem).toBe(true);
   });
   it('visitantes continuam operando sobre qualquer subclasse', () => {
     const registro = RegistroPrototipos.padrao();
@@ -72,7 +72,7 @@ describe('RegistroPrototipos', () => {
     expect(segundo.restricoes.papeisObrigatorios.length).toBeGreaterThan(0);
   });
   it('armazena cópia ao registrar e rejeita tipo desconhecido', () => {
-    const modelo = new ProjetoFiccao(estadoInicial({ ...projetoExemplo(), id: '' }));
+    const modelo = new ProjetoFiccao(estadoInicial(comServicos({ ...projetoExemplo(), id: '' })));
     const registro = new RegistroPrototipos().registrar(modelo);
     modelo.estado.projeto.genero = 'alterado depois';
     expect(registro.obter('ficcao').estado.projeto.genero).toBe('drama');

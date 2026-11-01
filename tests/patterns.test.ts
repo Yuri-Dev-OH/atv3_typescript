@@ -5,9 +5,9 @@ import { CalculadorCompatibilidade, GeradorRelatorio, ValidadorConsistencia } fr
 import { OrquestradorEquipe, OrquestradorPadrao, type Composicao } from '../src/recommendation/orchestrator.js';
 import { cosseno, estrategias, mediaAvaliacoes, type RecomendacaoStrategy } from '../src/recommendation/strategies.js';
 import { RegistroPrototipos } from '../src/domain/prototipos.js';
-import { profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
+import { comServicos, profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
 
-const projeto = (): ProjetoDados => ({ ...projetoExemplo(), id: id() });
+const projeto = (): ProjetoDados => comServicos({ ...projetoExemplo(), id: id() });
 const profissionais = (): ProfissionalDados[] => profissionaisExemplo().map(p => ({ ...p, id: id() }));
 const ficcao = () => RegistroPrototipos.padrao().obter('ficcao').criarFabrica();
 // Com `estrategia`, a fábrica de ficção passa a fornecer esse recomendador ao orquestrador.
@@ -132,7 +132,7 @@ describe('Visitor e validações do domínio', () => {
   it('opera sobre o mesmo projeto sem modificar seu estado', () => {
     const p = projeto(), resultado = orquestrador().orquestrar({ ...p, estrategia: 'cosseno' }, profissionais());
     const estado: EstadoProjeto = { projeto: p, equipe: { id: id(), membros: resultado.membros, status: 'sugerida', custo: 7200 },
-      recomendacao: { id: id(), criadaEm: '', estrategia: 'cosseno', ranking: {}, faltantes: [], avisos: [], degradada: false }, convites: [], excluidos: {}, versao: 1 };
+      recomendacao: { id: id(), criadaEm: '', estrategia: 'cosseno', ranking: {}, faltantes: [], avisos: [], degradada: false }, convites: [], excluidos: {}, pagamentos: [], versao: 1 };
     const entidade = new ProjetoFiccao(estado), antes = structuredClone(estado);
     expect(entidade.aceitar(new ValidadorConsistencia())).toEqual(['Há membros sem confirmação de ambas as partes.']);
     expect(entidade.aceitar(new CalculadorCompatibilidade())).toBeGreaterThan(0);
@@ -171,7 +171,7 @@ describe('Visitor e validações do domínio', () => {
   });
   it('percorre os profissionais ligados ao projeto', () => {
     const p = projeto(), lista = profissionais(), resultado = orquestrador().orquestrar({ ...p, estrategia: 'cosseno' }, lista);
-    const estado: EstadoProjeto = { projeto: p, equipe: { id: id(), membros: resultado.membros, status: 'sugerida', custo: 7200 }, recomendacao: { id: id(), criadaEm: '', estrategia: 'cosseno', ranking: {}, faltantes: [], avisos: [], degradada: false }, convites: [], excluidos: {}, versao: 1 };
+    const estado: EstadoProjeto = { projeto: p, equipe: { id: id(), membros: resultado.membros, status: 'sugerida', custo: 7200 }, recomendacao: { id: id(), criadaEm: '', estrategia: 'cosseno', ranking: {}, faltantes: [], avisos: [], degradada: false }, convites: [], excluidos: {}, pagamentos: [], versao: 1 };
     const prof = new Profissional(lista[0]!); prof.dados.disponibilidade.fim = '2020-01-01';
     const entidade = new ProjetoFiccao(estado, [prof]);
     expect(entidade.aceitar(new ValidadorConsistencia()).length).toBeGreaterThan(2);

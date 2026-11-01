@@ -7,6 +7,11 @@ import { profissionaisExemplo, projetoExemplo } from '../scripts/fixtures.js';
 import { criarCatalogoApp } from '../src/http/catalog-app.js';
 import { CatalogoHttp } from '../src/infrastructure/http-clients.js';
 import { RepositorioMemoria } from '../src/infrastructure/memory-repository.js';
+import { AdaptadorS3 } from '../src/adapters/armazenamento.js';
+import { AdaptadorStripe } from '../src/adapters/pagamento.js';
+import { AdaptadorInterno, AdaptadorLinkedIn } from '../src/adapters/profissional.js';
+import { PacoteServico, ServicoAtomico } from '../src/domain/servicos.js';
+import { LinkedInSimulado } from '../src/infrastructure/externos/profissionais.js';
 
 const url = process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('Integração com PostgreSQL real', () => {
@@ -95,6 +100,35 @@ describe.skipIf(!url)('Integração com PostgreSQL real', () => {
       expect((await repo.obterProjeto(parcial.projeto.id))!.equipe.status).toBe('parcial');
       await externo.eventos.processar();
     } finally { await externo.app.close(); await frio.app.close(); await catalogo.close(); }
+  });
+  it('persiste a árvore de serviços, os pagamentos e as reimportações de profissionais', async () => {
+    const servicoPrincipal = new PacoteServico('Curta', [new ServicoAtomico('Direção', 'DIRETOR', 3000, 20),
+      new PacoteServico('Pós', [new ServicoAtomico('Edição', 'EDITOR', 1500, 10)], true)], true).paraDados();
+    const { papeis: _papeis, ...base } = projetoExemplo();
+    let estado = await contexto.sistema.criar({ ...base, servicoPrincipal });
+    const projetoId = estado.projeto.id;
+    expect((await repo.obterProjeto(projetoId))!.projeto.servicoPrincipal).toEqual(servicoPrincipal);
+    for (const m of estado.equipe.membros) {
+      estado = await contexto.sistema.decidir(projetoId, m.papel, 'aceitar');
+      const convite = estado.convites.find(c => c.papel === m.papel && c.status === 'pendente')!;
+      estado = await contexto.sistema.responderConvite(projetoId, convite.id, true);
+    }
+    expect((await contexto.sistema.pagarEquipe(projetoId)).efetuados).toHaveLength(2);
+    expect((await repo.obterProjeto(projetoId))!.pagamentos.map(p => p.status)).toEqual(['aprovado', 'aprovado']);
+    // Avaliar e reimportar regravam o mesmo profissional (upsert), sem duplicar.
+    const [primeiro] = await repo.listarProfissionais();
+    await contexto.sistema.avaliarProfissional(primeiro!.id, { produtorId: 'produtor-pg', nota: 5, comentario: 'Persistido.' });
+    expect((await repo.listarProfissionais()).find(p => p.id === primeiro!.id)!.avaliacoes).toContainEqual(expect.objectContaining({ produtorId: 'produtor-pg', nota: 5 }));
+    const linkedin = new LinkedInSimulado(), total = (await repo.listarProfissionais()).length;
+    contexto.sistema.configurarAdaptadores(new AdaptadorS3(), new AdaptadorStripe(), new AdaptadorLinkedIn(linkedin));
+    try {
+      expect(await contexto.sistema.importarProfissionais()).toMatchObject({ importados: 4 });
+      await linkedin.avaliarProfissional('li-1001', 3);
+      expect(await contexto.sistema.importarProfissionais()).toMatchObject({ importados: 0, atualizados: 1, inalterados: 3 });
+      expect(await contexto.sistema.importarProfissionais()).toMatchObject({ importados: 0, atualizados: 0, inalterados: 4 });
+      expect(await repo.listarProfissionais()).toHaveLength(total + 4);
+    } finally { contexto.sistema.configurarAdaptadores(new AdaptadorS3(), new AdaptadorStripe(), new AdaptadorInterno(repo)); }
+    await contexto.eventos.processar();
   });
   it('migração pode ser desfeita e reaplicada no banco de teste', async () => {
     await contexto.eventos.processar();
