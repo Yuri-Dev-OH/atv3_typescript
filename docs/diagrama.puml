@@ -1,17 +1,27 @@
 @startuml
-title Cinebridge - implementação
+title Cinebridge - implementação (atividades 1, 2 e 3)
 interface RepositorioProfissionais
 interface Repositorio
 interface ProcessadorEventos
 interface PublicadorIntegracao
 Repositorio --|> RepositorioProfissionais
-class SistemaRecomendacao
+class SistemaRecomendacao {
+  -adaptadorArmazenamento: AdaptadorArmazenamento
+  -adaptadorPagamento: AdaptadorPagamento
+  -adaptadorProfissional: AdaptadorProfissional
+  -estrategiaAtual: RecomendacaoStrategy
+  +executarRecomendacao(projeto: Projeto): Promise<Equipe>
+  +definirEstrategia(estrategia: RecomendacaoStrategy): void
+  +configurarAdaptadores(armazenamento, pagamento, profissional): void
+}
+interface RecomendacaoStrategy <<Strategy>> {
+  +recomendar(projeto: ProjetoDados, profissionais: ProfissionalDados[]): Map<Papel, Candidato[]>
+}
 class CatalogoProfissionais
 class CatalogoHttp
 class RepositorioPostgres
 class OrquestradorEquipe <<Template Method>>
 class OrquestradorPadrao
-interface EstrategiaRecomendacao <<Strategy>>
 class SimilaridadeCosseno
 class FiltragemColaborativa
 class RegrasOrcamento
@@ -36,10 +46,7 @@ SistemaRecomendacao --> CatalogoProfissionais
 CatalogoProfissionais --> RepositorioProfissionais
 SistemaRecomendacao --> OrquestradorEquipe
 OrquestradorPadrao --|> OrquestradorEquipe
-OrquestradorEquipe --> EstrategiaRecomendacao
-SimilaridadeCosseno ..|> EstrategiaRecomendacao
-FiltragemColaborativa ..|> EstrategiaRecomendacao
-RegrasOrcamento ..|> EstrategiaRecomendacao
+OrquestradorEquipe --> RecomendacaoStrategy
 EventosEmMemoria ..|> ProcessadorEventos
 EventosEmMemoria o--> Observador
 ObservadorComposicao ..|> Observador
@@ -50,7 +57,6 @@ IntegracaoEquipe ..|> Observador
 ObservadorComposicao --> SistemaRecomendacao : aplicarRespostaConvite
 IntegracaoEquipe --> PublicadorIntegracao
 PublicadorHttp ..|> PublicadorIntegracao
-Projeto --> Visitante : aceitar
 Profissional --> Visitante : aceitar
 ValidadorConsistencia ..|> Visitante
 CalculadorCompatibilidade ..|> Visitante
@@ -65,6 +71,7 @@ abstract class "Projeto<R>" as Projeto {
   +ajustar(ajustes, restricoes): this
   +comEstado(estado, profissionais): Projeto<R>
 }
+Projeto --> Visitante : aceitar
 class ProjetoFiccao
 class ProjetoDocumentario
 class ProjetoAnimacao
@@ -88,7 +95,7 @@ interface FabricaProjeto <<Abstract Factory>> {
   +tipo: TipoProjeto
   +criarProjeto(dados): Projeto
   +criarValidador(): ValidadorProjeto
-  +criarRecomendador(estrategia): EstrategiaRecomendacao
+  +criarRecomendador(estrategia): RecomendacaoStrategy
   +criarNotificador(): NotificadorProjeto
   +criarRelatorio(): Visitante
 }
@@ -112,9 +119,7 @@ FabricaBase --> Projeto : prototipo
 Projeto ..> FabricaProjeto : criarFabrica() <<Factory Method>>
 FabricaProjeto ..> ValidadorProjeto : cria
 FabricaProjeto ..> NotificadorProjeto : cria
-FabricaProjeto ..> EstrategiaRecomendacao : cria
-RecomendadorPriorizado ..|> EstrategiaRecomendacao
-RecomendadorPriorizado --> EstrategiaRecomendacao : base
+FabricaProjeto ..> RecomendacaoStrategy : cria
 OrquestradorEquipe --> "1" FabricaProjeto
 SistemaRecomendacao ..> FabricaProjeto : seleciona pelo tipo
 note right of Profissional
@@ -130,5 +135,148 @@ end note
 note bottom of PublicadorHttp
 EQUIPE_FORMADA para projetos e financeiro.
 Repetição com chave de idempotência.
+end note
+' ===== Atividade 3: Adapter =====
+interface AdaptadorArmazenamento <<Adapter>> {
+  +salvarArquivo(conteudo: Buffer, metadados: MetadadosArquivo): Promise<string>
+  +recuperarArquivo(id: string): Promise<Buffer>
+  +listarArquivos(prefixo: string): Promise<string[]>
+}
+interface AdaptadorPagamento <<Adapter>> {
+  +efetuarPagamento(valor: number, origem: string, destino: string): Promise<string>
+  +cancelarPagamento(id: string): Promise<boolean>
+  +verificarPagamento(id: string): Promise<StatusPagamento>
+}
+interface AdaptadorProfissional <<Adapter>> {
+  +listarProfissionais(criterios): Promise<Profissional[]>
+  +detalharProfissional(id: string): Promise<Profissional>
+  +registrarAvaliacao(id: string, avaliacao): Promise<void>
+}
+abstract class ArmazenamentoExterno {
+  +upload(arquivo: File): Promise<string>
+  +download(id: string): Promise<File>
+  +listar(pasta: string): Promise<string[]>
+}
+abstract class GatewayPagamento {
+  +processarPagamento(valor: number, dados): Promise<Transacao>
+  +estornarPagamento(id: string): Promise<boolean>
+  +consultarStatus(id: string): Promise<string>
+}
+abstract class ApiProfissionalExterna {
+  +buscarProfissionais(filtros): Promise<unknown[]>
+  +obterPerfil(id: string): Promise<unknown>
+  +avaliarProfissional(id: string, nota: number): Promise<void>
+}
+class AdaptadorS3
+class AdaptadorGoogleCloud
+class AdaptadorLocal
+class AdaptadorStripe
+class AdaptadorPagSeguro
+class AdaptadorPayPal
+class AdaptadorLinkedIn
+class AdaptadorIndeed
+class AdaptadorInterno
+class S3Simulado
+class GoogleCloudStorageSimulado
+class StripeSimulado
+class PagSeguroSimulado
+class PayPalSimulado
+class LinkedInSimulado
+class IndeedSimulado
+SistemaRecomendacao --> "1" AdaptadorArmazenamento : utiliza
+SistemaRecomendacao --> "1" AdaptadorPagamento : utiliza
+SistemaRecomendacao --> "1" AdaptadorProfissional : utiliza
+AdaptadorS3 ..|> AdaptadorArmazenamento
+AdaptadorGoogleCloud ..|> AdaptadorArmazenamento
+AdaptadorLocal ..|> AdaptadorArmazenamento
+AdaptadorStripe ..|> AdaptadorPagamento
+AdaptadorPagSeguro ..|> AdaptadorPagamento
+AdaptadorPayPal ..|> AdaptadorPagamento
+AdaptadorLinkedIn ..|> AdaptadorProfissional
+AdaptadorIndeed ..|> AdaptadorProfissional
+AdaptadorInterno ..|> AdaptadorProfissional
+S3Simulado --|> ArmazenamentoExterno
+GoogleCloudStorageSimulado --|> ArmazenamentoExterno
+StripeSimulado --|> GatewayPagamento
+PagSeguroSimulado --|> GatewayPagamento
+PayPalSimulado --|> GatewayPagamento
+LinkedInSimulado --|> ApiProfissionalExterna
+IndeedSimulado --|> ApiProfissionalExterna
+AdaptadorS3 "1" --> "0..1" S3Simulado : adapta
+AdaptadorGoogleCloud "1" --> "0..1" GoogleCloudStorageSimulado : adapta
+AdaptadorStripe "1" --> "0..1" StripeSimulado : adapta
+AdaptadorPagSeguro "1" --> "0..1" PagSeguroSimulado : adapta
+AdaptadorPayPal "1" --> "0..1" PayPalSimulado : adapta
+AdaptadorLinkedIn "1" --> "0..1" LinkedInSimulado : adapta
+AdaptadorIndeed "1" --> "0..1" IndeedSimulado : adapta
+AdaptadorInterno --> RepositorioProfissionais : adapta
+note bottom of AdaptadorLocal
+node:fs no diretório ARMAZENAMENTO_LOCAL_DIR;
+identificadores lógicos validados contra path traversal.
+end note
+' ===== Atividade 3: Composite =====
+interface ServicoProjeto <<Composite>> {
+  +calcularCusto(): number
+  +listarSubservicos(): ServicoProjeto[]
+  +obterPrazo(): number
+  +validar(): string[]
+  +papeisExigidos(): PapelExigido[]
+  +avaliarCobertura(cobertos): boolean
+}
+class ServicoAtomico {
+  +papel: Papel
+  -custo: number
+  -prazo: number
+}
+class PacoteServico {
+  -itens: ServicoProjeto[]
+  +paralelo: boolean
+  +adicionar(servico): this
+  +remover(servico): boolean
+}
+ServicoAtomico ..|> ServicoProjeto
+PacoteServico ..|> ServicoProjeto
+PacoteServico "1" o--> "1..*" ServicoProjeto : itens
+Projeto --> "1" ServicoProjeto : servicoPrincipal
+note right of Projeto
+calcularCustoTotal() delega a servicoPrincipal.calcularCusto();
+validarEstrutura() é recursiva (papéis e prazos na janela).
+end note
+FabricaProjeto ..> ServicoProjeto : criarServicoPrincipal()
+' ===== Atividade 3: Decorator =====
+abstract class RecomendadorBase <<Template Method>>
+abstract class DecoradorRecomendacao <<Decorator>> {
+  #interno: RecomendacaoStrategy
+}
+class CacheDecorator
+class AuditoriaDecorator
+class CompressaoDecorator
+class MontadorPilhaRecomendacao {
+  +politica: NomeDecorador[]
+  +montar(base, preferencia?): RecomendacaoStrategy
+  +definirPolitica(politica): void
+}
+class ArmazemCacheRecomendacao
+class RegistroAuditoriaRecomendacao
+class MedidorCompressao
+RecomendadorBase ..|> RecomendacaoStrategy
+SimilaridadeCosseno --|> RecomendadorBase
+FiltragemColaborativa --|> RecomendadorBase
+RegrasOrcamento --|> RecomendadorBase
+DecoradorRecomendacao ..|> RecomendacaoStrategy
+DecoradorRecomendacao --> "1" RecomendacaoStrategy : interno
+CacheDecorator --|> DecoradorRecomendacao
+AuditoriaDecorator --|> DecoradorRecomendacao
+CompressaoDecorator --|> DecoradorRecomendacao
+RecomendadorPriorizado --|> DecoradorRecomendacao
+CacheDecorator --> ArmazemCacheRecomendacao
+AuditoriaDecorator --> RegistroAuditoriaRecomendacao
+CompressaoDecorator --> MedidorCompressao
+MontadorPilhaRecomendacao ..> DecoradorRecomendacao : cria
+SistemaRecomendacao --> "1" MontadorPilhaRecomendacao
+note bottom of MontadorPilhaRecomendacao
+Ordem de aplicação de dentro para fora.
+Política: RECOMENDACAO_DECORADORES ou PUT /recomendador/decoradores;
+preferência do produtor: ProjetoDados.decoradores.
 end note
 @enduml

@@ -29,6 +29,25 @@ npm run demo
 
 A demonstração cria um projeto, recomenda seis profissionais, troca para a estratégia de orçamento, substitui o editor, envia convites, confirma todos os integrantes e imprime o relatório. Ela exige o seed e a API em execução. Cada execução cria um novo projeto.
 
+Para a atividade 3, com a API em execução:
+
+```powershell
+npm run demo:padroes
+```
+
+A demonstração:
+- **Composite:** cria um projeto a partir de uma hierarquia de serviços e imprime a árvore com custos e prazos.
+- **Decorator:** cria projetos semelhantes e mostra as métricas de cache, auditoria e compressão.
+- **Adapter:** salva e lê um arquivo, forma a equipe, paga os membros e importa profissionais pelos provedores configurados.
+
+Para ver o mesmo código com outros provedores, pare a API e inicie-a com outras variáveis:
+
+```powershell
+$env:ARMAZENAMENTO_PROVEDOR='gcs'; $env:PAGAMENTO_PROVEDOR='pagseguro'; $env:PROFISSIONAIS_PROVEDOR='linkedin'; npm start
+```
+
+No Ubuntu: `ARMAZENAMENTO_PROVEDOR=gcs PAGAMENTO_PROVEDOR=pagseguro PROFISSIONAIS_PROVEDOR=linkedin npm start`. Variáveis definidas no terminal têm prioridade sobre o `.env`.
+
 Para executar a versão compilada, pare o modo de desenvolvimento com Ctrl+C e use `npm start`. No Ubuntu, substitua a linha de cópia do `.env` por `test -f .env || cp .env.example .env`. É necessário Node.js 24 ou superior e Docker com Compose.
 
 ## Testes
@@ -42,7 +61,7 @@ npm run test:load
 npm run demo:integracoes
 ```
 
-- `npm test`: testes dos padrões, regras de negócio e API. Com `TEST_DATABASE_URL` no `.env`, também executa os testes de PostgreSQL.
+- `npm test`: testes dos padrões, regras de negócio e API. Os testes da atividade 3 estão em `tests/adapters.test.ts`, `tests/composite.test.ts` e `tests/decorators.test.ts`; para rodar só um: `npx vitest run tests/composite.test.ts`. Com `TEST_DATABASE_URL` no `.env`, também executa os testes de PostgreSQL.
 - `npm run test:coverage`: relatório de cobertura no terminal e em `coverage/index.html`. Exige mais de 80% em linhas, funções, instruções e ramificações. Para medir a persistência também, o banco de teste deve estar disponível.
 - `npm run test:postgres`: somente os testes de integração com PostgreSQL real. Sem `TEST_DATABASE_URL`, essa suíte é pulada; isso não valida a persistência.
 - `npm run evaluate`: precisão@1 para cada estratégia, em um conjunto sintético com avaliações separadas das usadas no cálculo. Serve para demonstrar a medição; não representa a qualidade com usuários reais.
@@ -79,6 +98,19 @@ A imagem imprime a versão do sistema e do Node. A validação só está conclu�
 | GET | `/auditoria?projetoId=...` | Ações registradas |
 | GET | `/eventos` | Eventos e observadores que receberam cada um |
 | GET | `/integracoes` | Eventos destinados a projetos e financeiro |
+| GET | `/projetos/:id/servicos` | Hierarquia de serviços com custo, prazo e cobertura de cada nó |
+| POST | `/recomendacoes/simulacoes` | Monta a equipe de um projeto sem gravá-lo |
+| POST | `/projetos/:id/arquivos` | Salva arquivo de mídia (`nome`, `tipoConteudo`, `conteudoBase64`; até 6 MiB) |
+| GET | `/projetos/:id/arquivos` | Lista os arquivos do projeto |
+| GET | `/projetos/:id/arquivos/:arquivo` | Baixa um arquivo |
+| POST | `/projetos/:id/pagamentos` | Paga os membros da equipe formada, sem pagar duas vezes |
+| GET | `/projetos/:id/pagamentos` | Pagamentos, com status consultado no provedor |
+| POST | `/projetos/:id/pagamentos/:pagamentoId/cancelamento` | Estorna um pagamento |
+| POST | `/profissionais/importacoes` | Importa profissionais da fonte configurada (`papel`, `localizacao` e `remoto` opcionais) |
+| GET | `/profissionais/:id` | Detalha um profissional na fonte configurada |
+| POST | `/profissionais/:id/avaliacoes` | Registra avaliação (`produtorId`, `nota` de 1 a 5, `comentario`) |
+| GET | `/recomendador` | Política de decoradores e métricas de cache, auditoria e compressão |
+| PUT | `/recomendador/decoradores` | Troca a política em tempo de execução, por exemplo `{"decoradores":["cache","auditoria","compressao"]}` |
 
 Os exemplos completos de dados estão em `scripts/fixtures.ts`. Para criar um projeto manualmente no PowerShell:
 
@@ -133,11 +165,12 @@ Entradas inválidas retornam 400, regras de negócio retornam 422, recursos ause
 
 ```text
 src/
-  domain/          entidades, contratos e visitantes
-  recommendation/ estratégias e orquestrador
+  domain/          entidades, contratos, visitantes e serviços (Composite)
+  adapters/        adaptadores de armazenamento, pagamento e profissionais
+  recommendation/ estratégias, decoradores e orquestrador
   application/     casos de uso e cache do catálogo
   events/          observadores e EventEmitter
-  infrastructure/  TypeORM, migração e repositórios
+  infrastructure/  TypeORM, migração, repositórios e sistemas externos simulados
   http/            rotas e validação JSON Schema
 tests/             testes unitários e de integração
 scripts/           migração, exemplos, avaliação e carga
@@ -152,6 +185,9 @@ scripts/           migração, exemplos, avaliação e carga
 | Prototype | `Projeto` (abstrato), `ProjetoFiccao`, `ProjetoDocumentario`, `ProjetoAnimacao`, `ProjetoPublicitario`, `RegistroPrototipos` | `clonar()` devolve cópia profunda (papéis, competências, restrições e profissionais); novos projetos nascem do clone do modelo do tipo |
 | Factory Method | `Projeto.criarFabrica()` em cada subclasse; `criarValidador()` e `criarNotificador()` em cada fábrica | Cada tipo de projeto define a fábrica e os componentes que coopera com ele |
 | Abstract Factory | `FabricaProjeto`, `FabricaFiccao`, `FabricaDocumentario`, `FabricaAnimacao`, `FabricaPublicitario` | Trocar a fábrica troca projeto, validador, recomendador e notificador; `OrquestradorEquipe` recebe a fábrica no construtor e não tem condicionais por tipo |
+| Adapter | `AdaptadorArmazenamento` (`AdaptadorS3`, `AdaptadorGoogleCloud`, `AdaptadorLocal`), `AdaptadorPagamento` (`AdaptadorStripe`, `AdaptadorPagSeguro`, `AdaptadorPayPal`), `AdaptadorProfissional` (`AdaptadorLinkedIn`, `AdaptadorIndeed`, `AdaptadorInterno`) | Sistemas externos simulados com formatos próprios; `configurarAdaptadores()` troca o provedor sem alterar a regra de negócio |
+| Composite | `ServicoProjeto`, `ServicoAtomico`, `PacoteServico`; `Projeto.servicoPrincipal` | Custo, prazo, validação e cobertura recursivos em árvores de qualquer profundidade |
+| Decorator | `CacheDecorator`, `AuditoriaDecorator` e `CompressaoDecorator` sobre `RecomendadorBase`; `MontadorPilhaRecomendacao` | Pilha montada em tempo de execução, em qualquer ordem, por política do sistema ou preferência do produtor |
 
 ### Tipos de projeto (Prototype)
 
@@ -171,6 +207,81 @@ A cada solicitação, `SistemaRecomendacao.fabricaPara(tipo)` obtém o protótip
 As violações retornam 422 na criação e aparecem em `pendencias` no relatório. Testes: `tests/prototype.test.ts` e `tests/fabricas.test.ts`.
 
 As dependências são fornecidas por construtor. O servidor usa PostgreSQL; o repositório em memória é usado exclusivamente nos testes. Competências, avaliações, convites e recomendações têm tabelas próprias. O projeto conserva em JSONB o estado completo da equipe, permitindo atualização atômica com controle de versão. O histórico de recomendações é preservado.
+
+### Atividade 3: Adapter, Composite e Decorator
+
+**Adapter.** O núcleo depende de três interfaces, definidas em `src/domain/ports.ts`.
+
+Os sistemas externos simulados ficam em `src/infrastructure/externos/` e imitam as convenções das APIs reais:
+
+| Família | Provedor simulado | Convenções imitadas |
+|---|---|---|
+| Armazenamento | S3 | URIs `s3://` e erro `NoSuchKey` |
+| Armazenamento | Google Cloud Storage | Geração no identificador (`gs://…#n`) |
+| Pagamento | Stripe | Centavos inteiros; status `succeeded` |
+| Pagamento | PagSeguro | Reais; status `PAID` |
+| Pagamento | PayPal | `intent: CAPTURE`; status `COMPLETED` |
+| Profissionais | LinkedIn | Endossos e notas de 1 a 5 |
+| Profissionais | Indeed | Habilidades e notas de 0 a 10 |
+
+- **Tradução:** os adaptadores em `src/adapters/` convertem tudo para identificadores lógicos, valores em reais e `StatusPagamento`.
+- **Disco local:** `AdaptadorLocal` grava de verdade em disco (`node:fs`) e valida os identificadores contra *path traversal*. Funciona igual no Windows e no Linux.
+- **Escolha do provedor:** pelas variáveis `ARMAZENAMENTO_PROVEDOR`, `PAGAMENTO_PROVEDOR` e `PROFISSIONAIS_PROVEDOR`. Só `src/adapters/configuracao.ts` conhece as classes concretas.
+- **Limitação:** os provedores simulados guardam dados em memória e os perdem ao reiniciar.
+
+Profissionais de fontes externas são importados para o cadastro interno:
+- **Sem duplicar:** cada um recebe um UUID estável, derivado da fonte e do ID externo, então reimportar atualiza o cadastro. Isso é necessário porque os convites apontam para o cadastro interno por chave estrangeira.
+- **Avaliações:** vão para a fonte configurada. Com uma fonte externa, chegam ao cadastro interno na próxima importação.
+
+O pagamento:
+- exige equipe formada;
+- é feito membro a membro e ignora quem já foi pago;
+- grava os pagamentos concluídos mesmo que o gateway falhe no meio.
+
+**Composite.** `Projeto.servicoPrincipal` é a fonte da verdade:
+- `calcularCustoTotal()` e `obterPrazoTotal()` delegam à árvore, e `validarEstrutura()` é recursiva.
+- Pacotes em sequência somam os prazos; pacotes com `paralelo: true` usam o maior.
+- O prazo é contado em dias corridos, incluindo o dia de início.
+
+Em `POST /projetos`, há três formas de definir os serviços:
+- enviar `servicoPrincipal`;
+- enviar a lista legada `papeis`, convertida em um pacote paralelo com o orçamento rateado;
+- não enviar nenhum dos dois: a fábrica do tipo cria o pacote padrão em etapas (no documentário, pesquisa, captação e pós-produção).
+
+Regras de validação:
+- Enviar `servicoPrincipal` e `papeis` juntos retorna 422.
+- Serviços que não cabem na janela do projeto retornam 422.
+- Custo estimado acima do orçamento gera aviso, não erro.
+- A árvore aceita até 6 níveis e 200 serviços.
+
+`papeis` continua no JSON como projeção derivada, porque o contrato de `RecomendacaoStrategy` não muda. Na reavaliação, os pacotes gerados automaticamente são recalculados quando datas, orçamento ou tipo mudam; os personalizados são preservados.
+
+Exemplo de `servicoPrincipal`:
+
+```json
+{ "tipo": "pacote", "nome": "Pós-produção", "itens": [
+  { "tipo": "atomico", "nome": "Edição de vídeo", "papel": "EDITOR", "custo": 1500, "prazo": 10 },
+  { "tipo": "pacote", "nome": "Finalização", "paralelo": true, "itens": [
+    { "tipo": "atomico", "nome": "Coloração", "papel": "EDITOR", "custo": 800, "prazo": 4 },
+    { "tipo": "atomico", "nome": "Efeitos visuais", "papel": "EFEITOS_VISUAIS", "custo": 2500, "prazo": 7 } ] } ] }
+```
+
+**Decorator.** `RecomendacaoStrategy` não mudou. `RecomendadorBase` concentra a lógica da atividade 1, e as três estratégias só definem a pontuação. Cada decorador recebe no construtor o recomendador que envolve.
+
+A ordem da pilha é a ordem de aplicação, de dentro para fora:
+- Em `cache,auditoria` (padrão), a auditoria registra todas as chamadas, inclusive as respondidas pelo cache.
+- Em `auditoria,cache`, registra só as que chegam ao recomendador.
+
+A pilha pode ser definida de três formas:
+- pela variável `RECOMENDACAO_DECORADORES`;
+- em tempo de execução, por `PUT /recomendador/decoradores`;
+- pelo produtor, no campo `decoradores` do projeto.
+
+Comportamento de cada decorador:
+- **Cache:** considera os requisitos do projeto e o catálogo; um cadastro novo invalida as entradas.
+- **Compressão:** aplica gzip ao ranking serializado e devolve o conteúdo descomprimido. O ganho é real quando a carga atravessa a rede; dentro do processo, só custa CPU. Por isso fica fora da política padrão.
+
+A análise de anti-padrões pedida na introdução está em `docs/antipadroes.md`.
 
 ## Regras adotadas
 

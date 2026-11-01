@@ -44,3 +44,32 @@ Cobertura com PostgreSQL real: instruções 99,31%, ramificações 95,19%, funç
 Foi adicionado `.gitattributes` forçando LF em `*.sh` e `Dockerfile*`: com `core.autocrlf=true` no Windows, `scripts/validate-ubuntu.sh` era extraído com CRLF e a validação Ubuntu falhava antes de começar (`set: Illegal option -`).
 
 O teste de carga (10 mil profissionais, 100 requisições simultâneas, limite de 2 s) oscilou nesta máquina entre 1,24 s e 7,3 s de máximo, tanto na atividade 2 quanto no código original da atividade 1 executado nas mesmas condições; no contêiner Ubuntu o máximo foi 2,53 s. A medição isolada de CPU (100 criações com 10 mil profissionais em memória) foi equivalente nas duas versões (cerca de 22 ms por criação), portanto a variação decorre da carga do ambiente, não das fábricas.
+
+## Atividade 3 (Adapter, Composite e Decorator)
+
+Verificado em 01/11/2026 no Windows 11 (Node 24.21.0, PostgreSQL 18 no Docker Desktop) e em contêiner Ubuntu 24.04.5 LTS (Node 24.22.2). O diagrama `diagrama-3.png` (enviado à parte) foi usado como referência para os nomes e assinaturas do Adapter; a parte do Composite e do Decorator está cortada na imagem e seguiu o texto do enunciado.
+
+| Requisito do enunciado | Implementação e evidência |
+|---|---|
+| Interfaces `AdaptadorArmazenamento`, `AdaptadorPagamento` e `AdaptadorProfissional` | `src/domain/ports.ts`, com as operações do diagrama (`salvarArquivo`, `efetuarPagamento`, `listarProfissionais` etc.) |
+| Pelo menos duas implementações por interface | Três por interface: S3, Google Cloud e disco local; Stripe, PagSeguro e PayPal; LinkedIn, Indeed e cadastro interno (`src/adapters/`) |
+| Sistemas externos simulados | `ArmazenamentoExterno`, `GatewayPagamento` e `ApiProfissionalExterna`, com subclasses de formatos próprios (`src/infrastructure/externos/`) |
+| `SistemaRecomendacao` recebe os adaptadores | Construtor (`DependenciasSistema.adaptadores`) e `configurarAdaptadores()`; `definirEstrategia()` e `executarRecomendacao()` do diagrama |
+| `ServicoProjeto` com `calcularCusto`, `listarSubservicos`, `obterPrazo` e `validar`; `ServicoAtomico` e `PacoteServico` | `src/domain/servicos.ts` |
+| `Projeto.servicoPrincipal` no lugar da lista de papéis; `calcularCustoTotal` delega; validação recursiva | `src/domain/model.ts`; papéis derivados da árvore; prazos validados contra a janela do projeto |
+| `RecomendacaoStrategy` inalterada; `RecomendadorBase`; `CacheDecorator`, `AuditoriaDecorator` e `CompressaoDecorator` | `src/recommendation/strategies.ts` e `decorators.ts` |
+| Combinar decoradores em qualquer ordem e definir a pilha em tempo de execução | `MontadorPilhaRecomendacao`; política por `RECOMENDACAO_DECORADORES` e `PUT /recomendador/decoradores`; preferência do produtor em `decoradores` |
+| Testes do Adapter: trocar provedor sem alterar a regra de negócio | `tests/adapters.test.ts`: o mesmo fluxo (arquivo; pagamento, consulta e estorno; importação) com cada provedor, trocado por `configurarAdaptadores()` |
+| Testes do Composite: custos e prazos em diferentes profundidades | `tests/composite.test.ts`: 1 a 6 níveis, pacotes paralelos e sequenciais, centavos, limites e ciclos, API e reavaliação |
+| Testes do Decorator: cache mais rápido, auditoria de todas as chamadas, compressão menor, base inalterada | `tests/decorators.test.ts`: tempo com base lenta, registro de sucessos e falhas, bytes antes e depois, as 6 ordens com o mesmo resultado do recomendador base |
+| Windows e Ubuntu 24.04 | Windows: build, migrações, seed, 123 testes, API real e `demo:padroes` com dois conjuntos de provedores. Ubuntu: build, migrações e os 123 testes aprovados no contêiner de validação |
+
+Resultados:
+- **Cobertura com PostgreSQL real:** instruções 98,14%, ramificações 91,99%, funções 99,07% e linhas 99,52%, com 123 testes em 12 arquivos.
+- **API real:** a mesma versão compilada rodou com local, Stripe e interno e, alterando só variáveis de ambiente, com GCS, PagSeguro e LinkedIn. A reimportação do LinkedIn pelo catálogo HTTP não duplicou cadastros (4 importados e depois 4 inalterados).
+
+Teste de carga (10 mil profissionais, 100 requisições simultâneas, limite de 2 s):
+- **Windows:** passou duas vezes, com máximo de 1,58 s e 1,68 s.
+- **Contêiner Ubuntu desta máquina:** 100 respostas válidas, mas máximos de 2,25 s e 2,35 s, então o script de validação termina com código 1 nessa etapa. Na atividade 2, o mesmo ambiente marcou 2,53 s.
+- **Custo da atividade 3:** a medição em processo mostrou que os decoradores acrescentavam cerca de 2,5 ms por criação quando o cache não acerta. Isso foi reduzido para cerca de 1 ms com uma impressão digital compacta da lista de candidatos e candidatos imutáveis no cache.
+- **Causa do estouro:** o tempo restante vem de HTTP, TypeORM e PostgreSQL, que dividem a CPU da VM do WSL2. É o mesmo comportamento das atividades anteriores neste ambiente.
