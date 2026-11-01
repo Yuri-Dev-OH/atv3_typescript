@@ -17,7 +17,10 @@ export class RepositorioPostgres implements Repositorio {
   async salvarProfissional(p: ProfissionalDados, evento: EventoRecomendacao): Promise<void> {
     await this.banco.transaction(async m => {
       const { competencias, avaliacoes, ...dados } = p;
-      await m.insert(ProfissionalSchema, { id: p.id, dados });
+      // Upsert: reimportações e novas avaliações substituem o cadastro e as tabelas filhas.
+      await m.query('INSERT INTO profissional(id, dados) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET dados=EXCLUDED.dados', [p.id, JSON.stringify(dados)]);
+      await m.delete(CompetenciaSchema, { profissionalId: p.id });
+      await m.delete(AvaliacaoSchema, { profissionalId: p.id });
       if (competencias.length) await m.insert(CompetenciaSchema, competencias.map(c => ({ ...c, profissionalId: p.id })));
       if (avaliacoes.length) await m.insert(AvaliacaoSchema, avaliacoes.map(a => ({ ...a, profissionalId: p.id })));
       await m.query('INSERT INTO evento(id, dados) VALUES($1,$2)', [evento.id, JSON.stringify(evento)]);

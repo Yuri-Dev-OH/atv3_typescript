@@ -1,4 +1,5 @@
 import { PAPEIS, type ProfissionalDados, type ProjetoDados } from '../src/domain/model.js';
+import { servicosDePapeis } from '../src/domain/servicos.js';
 
 export function profissionaisExemplo(): Omit<ProfissionalDados, 'id'>[] {
   return PAPEIS.flatMap((papel, i) => [0, 1, 2].map(n => ({
@@ -12,10 +13,15 @@ export function profissionaisExemplo(): Omit<ProfissionalDados, 'id'>[] {
       { produtorId: 'produtor-parceiro', nota: n === 0 ? 3 : 5, comentario: 'Bom trabalho.', data: '2026-01-02' } ],
   })));
 }
-export function projetoExemplo(): Omit<ProjetoDados, 'id'> {
+/** Corpo de criação no formato legado (lista de papéis); a API monta o serviço principal. */
+export function projetoExemplo(): Omit<ProjetoDados, 'id' | 'servicoPrincipal'> {
   return { produtorId: 'produtor-demo', emailProdutor: 'produtor@example.com', titulo: 'Curta independente', genero: 'drama', duracao: 20,
     orcamento: 8000, inicio: '2027-02-01', prazo: '2027-03-01', tipoCaptacao: 'ficcao', localizacao: 'São Paulo',
     papeis: PAPEIS.map(papel => ({ papel, peso: papel === 'DIRETOR' ? 2 : 1, competencias: [{ nome: papel.toLowerCase(), nivel: 1 }] })),
     estrategia: 'cosseno', parametros: { pesoTecnico: 0.7, pesoHistorico: 0.3, notaMinima: 0 },
   };
+}
+/** Completa o projeto com o serviço principal derivado da lista de papéis, como faz a fábrica. */
+export function comServicos<T extends Omit<ProjetoDados, 'servicoPrincipal'>>(p: T): T & Pick<ProjetoDados, 'servicoPrincipal'> {
+  return { ...p, servicoPrincipal: servicosDePapeis(p).paraDados() };
 }

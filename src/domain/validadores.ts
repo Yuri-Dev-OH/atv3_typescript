@@ -1,4 +1,5 @@
 import type { ProjetoDados, RestricoesProjeto } from './model.js';
+import { validarEstruturaServicos } from './servicos.js';
 import type { RestricoesAnimacao, RestricoesDocumentario, RestricoesPublicitario } from './projetos.js';
 
 /** Produto da fábrica: regras de consistência de um tipo de projeto. */
@@ -10,7 +11,10 @@ export interface ValidadorProjeto {
   validar(projeto: ProjetoDados): string[];
 }
 
-/** Verifica as restrições comuns e delega às subclasses as regras específicas do tipo. */
+/**
+ * Verifica as restrições comuns, a estrutura recursiva dos serviços (Composite) e
+ * delega às subclasses as regras específicas do tipo.
+ */
 export class ValidadorRestricoes<R extends RestricoesProjeto = RestricoesProjeto> implements ValidadorProjeto {
   constructor(protected readonly restricoes: R, private readonly rotulo: string) {}
   validar(p: ProjetoDados): string[] {
@@ -19,7 +23,7 @@ export class ValidadorRestricoes<R extends RestricoesProjeto = RestricoesProjeto
     if (ausentes.length) erros.push(`${this.rotulo}: papéis obrigatórios ausentes (${ausentes.join(', ')}).`);
     const { duracaoMaxima } = this.restricoes;
     if (duracaoMaxima !== undefined && p.duracao > duracaoMaxima) erros.push(`${this.rotulo}: a duração máxima é de ${duracaoMaxima} min.`);
-    return [...erros, ...this.validarEspecificas(p)];
+    return [...erros, ...validarEstruturaServicos(p), ...this.validarEspecificas(p)];
   }
   protected validarEspecificas(_p: ProjetoDados): string[] { return []; }
 }

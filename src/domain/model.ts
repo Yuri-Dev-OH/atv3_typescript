@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import type { FabricaProjeto } from './fabricas.js';
+import { servicoDeDados, validarEstruturaServicos, type FaseServico, type ServicoDados, type ServicoProjeto } from './servicos.js';
 
 export const PAPEIS = ['DIRETOR', 'DIRETOR_FOTOGRAFIA', 'SONOPLASTA', 'EDITOR', 'ROTEIRISTA', 'EFEITOS_VISUAIS'] as const;
 export type Papel = typeof PAPEIS[number];
 export const TIPOS_PROJETO = ['documentario', 'ficcao', 'animacao', 'publicitario'] as const;
 export type TipoProjeto = typeof TIPOS_PROJETO[number];
 export type Estrategia = 'cosseno' | 'colaborativa' | 'orcamento';
+/** Funcionalidades transversais que podem envolver o recomendador (Decorator). */
+export const DECORADORES = ['cache', 'auditoria', 'compressao'] as const;
+export type NomeDecorador = typeof DECORADORES[number];
+export type StatusPagamento = 'pendente' | 'aprovado' | 'cancelado' | 'recusado';
 export interface Competencia { nome: string; nivel: number }
 export interface Avaliacao { produtorId: string; nota: number; comentario: string; data: string }
 export interface Trabalho { projetoId: string; genero: string; papel: Papel }
@@ -37,13 +42,24 @@ export interface ProjetoDados {
   prazo: string;
   tipoCaptacao: TipoProjeto;
   localizacao: string;
+  /** Hierarquia de serviços (Composite); é a fonte da verdade sobre o que o projeto exige. */
+  servicoPrincipal: ServicoDados;
+  /**
+   * Projeção derivada de `servicoPrincipal`, mantida porque o contrato de
+   * RecomendacaoStrategy (inalterado) recebe a lista de papéis.
+   */
   papeis: PapelExigido[];
   estrategia: Estrategia;
   parametros: Parametros;
+  /** Pilha de decoradores preferida pelo produtor; ausente, vale a política do sistema. */
+  decoradores?: NomeDecorador[];
 }
-/** Dados de entrada de um novo projeto; o protótipo do tipo completa os campos opcionais. */
-export type NovoProjeto = Omit<ProjetoDados, 'id' | 'papeis' | 'estrategia' | 'parametros'>
-  & Partial<Pick<ProjetoDados, 'papeis' | 'estrategia' | 'parametros'>>;
+/**
+ * Dados de entrada de um novo projeto; o protótipo do tipo completa os campos opcionais.
+ * Informe `servicoPrincipal` ou a lista legada `papeis`, nunca ambos.
+ */
+export type NovoProjeto = Omit<ProjetoDados, 'id' | 'papeis' | 'estrategia' | 'parametros' | 'servicoPrincipal'>
+  & Partial<Pick<ProjetoDados, 'papeis' | 'estrategia' | 'parametros' | 'servicoPrincipal'>>;
 /** Ajustes finos aplicados sobre um clone; o tipo do projeto é definido pela subclasse. */
 export type AjustesProjeto = Partial<Omit<ProjetoDados, 'id' | 'tipoCaptacao'>>;
 /** Restrições comuns a todos os tipos de projeto; cada subclasse acrescenta as suas. */
@@ -51,6 +67,8 @@ export interface RestricoesProjeto {
   papeisObrigatorios: Papel[];
   competenciasPrioritarias: Competencia[];
   duracaoMaxima?: number;
+  /** Etapas do pacote de serviços padrão do tipo. */
+  fases: FaseServico[];
 }
 export interface Candidato { profissionalId: string; nome: string; preco: number; pontuacao: number }
 export interface MembroEquipe extends Candidato { papel: Papel; confirmado: boolean; aceitoProdutor: boolean }
@@ -77,12 +95,25 @@ export interface Convite {
   status: 'pendente' | 'aceito' | 'recusado' | 'cancelado';
   respostaProcessada?: boolean;
 }
+/** Pagamento de um membro da equipe, processado pelo AdaptadorPagamento configurado. */
+export interface Pagamento {
+  id: string;
+  /** Identificador da transação no provedor. */
+  transacaoId: string;
+  provedor: string;
+  profissionalId: string;
+  papel: Papel;
+  valor: number;
+  status: StatusPagamento;
+  criadoEm: string;
+}
 export interface EstadoProjeto {
   projeto: ProjetoDados;
   equipe: Equipe;
   recomendacao: Recomendacao;
   convites: Convite[];
   excluidos: Partial<Record<Papel, string[]>>;
+  pagamentos: Pagamento[];
   versao: number;
 }
 export interface Destinatario { id: string; email: string }
@@ -134,6 +165,26 @@ export abstract class Projeto<R extends RestricoesProjeto = RestricoesProjeto> i
   }
   get estado(): EstadoProjeto { return this.estadoAtual; }
   get profissionais(): Profissional[] { return this.profissionaisAtuais; }
+  /** Raiz da hierarquia de serviços do projeto (Composite), no lugar da lista de papéis. */
+  get servicoPrincipal(): ServicoProjeto { return servicoDeDados(this.estadoAtual.projeto.servicoPrincipal); }
+  /**
+   * Substitui a hierarquia de serviços e sincroniza a projeção de papéis.
+   *
+   * @param servico Novo serviço principal, atômico ou pacote.
+   * @returns A própria instância, para encadeamento.
+   */
+  definirServicoPrincipal(servico: ServicoProjeto): this {
+    const projeto = this.estadoAtual.projeto;
+    projeto.servicoPrincipal = servico.paraDados();
+    projeto.papeis = servico.papeisExigidos();
+    return this;
+  }
+  /** Custo estimado do projeto: delega ao serviço principal, que percorre a hierarquia. */
+  calcularCustoTotal(): number { return this.servicoPrincipal.calcularCusto(); }
+  /** Prazo total, em dias, calculado recursivamente pelo serviço principal. */
+  obterPrazoTotal(): number { return this.servicoPrincipal.obterPrazo(); }
+  /** Validação recursiva: papéis dos serviços atômicos e prazos dentro da janela do projeto. */
+  validarEstrutura(): string[] { return validarEstruturaServicos(this.estadoAtual.projeto); }
   aceitar<T>(visitante: VisitanteProjeto<T>): T { return visitante.visitarProjeto(this); }
   /** Cada subclasse devolve uma cópia profunda do próprio tipo. */
   abstract clonar(): Projeto<R>;
@@ -198,7 +249,7 @@ export function estadoInicial(projeto: ProjetoDados): EstadoProjeto {
   return {
     projeto, equipe: { id: id(), membros: [], custo: 0, status: 'parcial' },
     recomendacao: { id: id(), criadaEm: agora(), estrategia: projeto.estrategia, ranking: {}, faltantes: [], avisos: [], degradada: false },
-    convites: [], excluidos: {}, versao: 0,
+    convites: [], excluidos: {}, pagamentos: [], versao: 0,
   };
 }
 function definidos<T extends object>(valores: T): Partial<T> {

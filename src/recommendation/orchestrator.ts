@@ -1,19 +1,30 @@
 import { centavos, exigir, validarProjeto, type Candidato, type MembroEquipe, type Papel, type ProfissionalDados, type ProjetoDados } from '../domain/model.js';
 import type { FabricaProjeto } from '../domain/fabricas.js';
+import type { RecomendacaoStrategy } from './strategies.js';
 
 export interface Composicao { membros: MembroEquipe[]; ranking: Map<Papel, Candidato[]>; faltantes: Papel[] }
+/** Ajustes do recomendador definidos em tempo de execução, sem alterar o orquestrador. */
+export interface ConfiguracaoRecomendador {
+  /** Estratégia fixada pelo sistema; ausente, vale a estratégia escolhida no projeto. */
+  estrategia?(): RecomendacaoStrategy | undefined;
+  /** Envolve o recomendador da fábrica com a pilha de decoradores (Decorator). */
+  decorar?(recomendador: RecomendacaoStrategy, projeto: ProjetoDados): RecomendacaoStrategy;
+}
 export abstract class OrquestradorEquipe {
   // Propriedade não gravável: as subclasses implementam apenas as etapas do fluxo.
   readonly orquestrar: (p: ProjetoDados, profissionais: ProfissionalDados[], fixos?: MembroEquipe[], excluidos?: Partial<Record<Papel, string[]>>) => Composicao;
   /**
    * @param fabrica Fábrica do tipo de projeto. Fornece o validador e o recomendador,
    *     de modo que um novo tipo não exige alterações no orquestrador.
+   * @param configuracao Estratégia fixa e pilha de decoradores, consultadas a cada orquestração.
    */
-  constructor(protected readonly fabrica: FabricaProjeto) {
+  constructor(protected readonly fabrica: FabricaProjeto, protected readonly configuracao: ConfiguracaoRecomendador = {}) {
     this.orquestrar = (p, profissionais, fixos = [], excluidos = {}) => {
       this.validarRestricoes(p, fixos);
       const normalizados = this.normalizarDados(p, profissionais);
-      const ranking = this.fabrica.criarRecomendador(p.estrategia).recomendar(p, normalizados);
+      const base = this.fabrica.criarRecomendador(this.configuracao.estrategia?.() ?? p.estrategia);
+      const recomendador = this.configuracao.decorar?.(base, p) ?? base;
+      const ranking = recomendador.recomendar(p, normalizados);
       for (const [papel, candidatos] of ranking) ranking.set(papel, candidatos.filter(c => !excluidos[papel]?.includes(c.profissionalId)));
       return this.posProcessar(p, ranking, fixos);
     };

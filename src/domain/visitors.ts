@@ -38,6 +38,7 @@ export class GeradorRelatorio implements VisitanteProjeto<string> {
     const { projeto, equipe } = p.estado;
     return [`Projeto: ${projeto.titulo}`, `Estratégia: ${projeto.estrategia}`, `Equipe: ${equipe.status}`,
       `Custo: R$ ${equipe.custo.toFixed(2)} / R$ ${projeto.orcamento.toFixed(2)}`,
+      `Serviços: R$ ${p.calcularCustoTotal().toFixed(2)} em ${p.obterPrazoTotal()} dias`,
       ...equipe.membros.map(m => `${m.papel}: ${m.nome} (${m.confirmado ? 'confirmado' : 'aguardando'})`),
       ...p.profissionais.map(prof => prof.aceitar(this)),
       `Compatibilidade: ${(p.aceitar(new CalculadorCompatibilidade()) * 100).toFixed(1)}%`,

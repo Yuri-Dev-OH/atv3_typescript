@@ -1,5 +1,6 @@
 import { estadoInicial, exigir, PAPEIS, type AjustesProjeto, type Competencia, type EstadoProjeto, type Papel, type PapelExigido, type Profissional, type Projeto, type ProjetoDados, type TipoProjeto } from './model.js';
 import { ProjetoAnimacao, ProjetoDocumentario, ProjetoFiccao, ProjetoPublicitario } from './projetos.js';
+import { servicosDePapeis } from './servicos.js';
 
 export { estadoInicial } from './model.js';
 
@@ -74,8 +75,10 @@ function papel(nome: Papel, peso: number, ...extras: Competencia[]): PapelExigid
   return { papel: nome, peso, competencias: [{ nome: nome.toLowerCase(), nivel: 1 }, ...extras] };
 }
 // Campos de identificação ficam vazios no modelo; a criação exige que o produtor os informe.
+// O serviço principal do modelo é provisório: a fábrica o recalcula com orçamento e datas reais.
 function modelo(tipoCaptacao: TipoProjeto, genero: string, duracao: number, papeis: PapelExigido[],
   parametros = { pesoTecnico: 0.7, pesoHistorico: 0.3, notaMinima: 0 }, estrategia: ProjetoDados['estrategia'] = 'cosseno'): ProjetoDados {
   return { id: '', produtorId: '', emailProdutor: '', titulo: '', genero, duracao, orcamento: 0, inicio: '', prazo: '',
-    tipoCaptacao, localizacao: '', papeis, estrategia, parametros };
+    tipoCaptacao, localizacao: '', papeis, estrategia, parametros,
+    servicoPrincipal: servicosDePapeis({ papeis, orcamento: 0, inicio: '', prazo: '' }).paraDados() };
 }
