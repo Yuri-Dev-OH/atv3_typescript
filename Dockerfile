@@ -7,3 +7,4 @@ COPY src ./src
 COPY scripts ./scripts
 RUN npm run build
 CMD ["node", "dist/src/catalog-server.js"]
+#https://www.youtube.com/watch?v=dQw4w9WgXcQ

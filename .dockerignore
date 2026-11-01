@@ -6,3 +6,4 @@ coverage
 .npm-cache
 *.pdf
 *.png
+.armazenamento/

@@ -16,6 +16,7 @@
     "pretest:load": "npm run build",
     "test:load": "node --env-file=.env dist/scripts/load.js",
     "demo": "tsx scripts/demo.ts",
+    "demo:padroes": "tsx --env-file-if-exists=.env scripts/demo-padroes.ts",
     "predemo:integracoes": "npm run build",
     "demo:integracoes": "node --env-file-if-exists=.env dist/scripts/integrations-demo.js",
     "evaluate": "tsx scripts/evaluate.ts"
